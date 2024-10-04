@@ -1,0 +1,153 @@
+Inicio
+    InicializarBot()
+    ImportLibs(
+        AnalizSentimnto, 
+        AnalizTxt, 
+        AnalizReac, 
+        API, 
+        ManErr, 
+        BD, 
+        CtrlTasaAPI
+    )
+    
+    DefCred(API_Creds)
+    DefOpcConex(API_Opcs)
+    InicSesion(API_Creds, API_Opcs)
+
+    CrearBD(
+        Nom: "AnalisisRedSocial",
+        Tabs: ["Perfs", "Pubs", "Comnts", "Reacs"],
+        Estruct: {
+            "Perfs": ["ID", "Nom", "FechaCreac", "NumPubs"],
+            "Pubs": ["ID", "PerfID", "Txt", "Fecha", "Sentimnto"],
+            "Comnts": ["ID", "PubID", "Txt", "Fecha", "Sentimnto"],
+            "Reacs": ["ID", "PubID", "Tipo", "Cant"]
+        }
+    )
+
+    DefConst(
+        LimPubs: 100,
+        LimComnts: 500,
+        TiemposReintAPI: [1, 5, 15],
+        ReacsPos: ["Me Gusta", "Me Encanta"],
+        ReacsNeg: ["Me Enoja", "Me Entristece"]
+    )
+
+    Func AnalizPerfs(ID_List):
+        Para cada ID en ID_List:
+            Intnts = 0
+            Mientrs Intnts < Long(TiemposReintAPI):
+                Intntar:
+                    Perf = API.ObtPerf(ID)
+                    Pubs = API.ObtPubs(ID, Lim: LimPubs)
+                    ReacsTotales = []
+                    SalirBcl
+
+                CaptErr(Excpt e):
+                    Intnts += 1
+                    Espr(TiemposReintAPI[Intnts])
+                    Si Intnts = Long(TiemposReintAPI):
+                        ManErr.RegErr("Err obt datos perf: " + ID)
+                        Contnr
+
+            Para cada Pub en Pubs:
+                TxtPub = Pub.Txt
+                FechaPub = Pub.Fecha
+                SentimntoPub = AnalizSentimnto(TxtPub)
+                GuardarEnBD("Pubs", [Pub.ID, ID, TxtPub, FechaPub, SentimntoPub])
+                
+                Comnts = API.ObtComnts(Pub.ID, Lim: LimComnts)
+                Para cada Comnt en Comnts:
+                    TxtComnt = Comnt.Txt
+                    FechaComnt = Comnt.Fecha
+                    SentimntoComnt = AnalizSentimnto(TxtComnt)
+                    GuardarEnBD("Comnts", [Comnt.ID, Pub.ID, TxtComnt, FechaComnt, SentimntoComnt])
+                
+                Reacs = API.ObtReacs(Pub.ID)
+                Para cada Reac en Reacs:
+                    TipoReac = Reac.Tipo
+                    Si TipoReac ExisteEn(ReacsPos):
+                        SentimntoReac = "Pos"
+                    Sino Si TipoReac ExisteEn(ReacsNeg):
+                        SentimntoReac = "Neg"
+                    Sino:
+                        SentimntoReac = "Neutral"
+                    
+                    ReacsTotales.Agr([Reac.ID, Pub.ID, TipoReac, 1])
+                
+                GuardarEnBD("Reacs", ReacsTotales)
+            
+            GuardarEnBD("Perfs", [Perf.ID, Perf.Nom, Perf.FechaCreac, Long(Pubs)])
+    FinFunc
+
+    Func AnalizSentimnto(Txt):
+        PreprocesTxt(Txt)
+        Si Long(Txt) = 0:
+            Ret "Neutral"
+        
+        ResultAnaliz = AnalizTxt.AnalizSentimnto(Txt)
+        
+        Si ResultAnaliz.PuntPos > 0.6:
+            Ret "Pos"
+        Sino Si ResultAnaliz.PuntNeg > 0.6:
+            Ret "Neg"
+        Sino:
+            Ret "Neutral"
+    FinFunc
+
+    Func PreprocesTxt(Txt):
+        ConvAMinusc(Txt)
+        ElimPunct(Txt)
+        ElimPalabsComns(Txt)
+        Ret Txt
+    FinFunc
+
+    Func GuardarEnBD(Tab, Datos):
+        Intntar:
+            BD.Insert(Tab, Datos)
+        CaptErr(Excpt e):
+            ManErr.RegErr("Err al guardar en tab " + Tab)
+    FinFunc
+
+    Func CtrlTasaAPI(Lim):
+        ContSolic = 0
+        TiemInicio = ObtHoraAct()
+        
+        Si ContSolic >= Lim:
+            TiemAct = ObtHoraAct()
+            DifTiem = CalcDif(TiemInicio, TiemAct)
+            Si DifTiem < 1 Min:
+                Espr(60 - DifTiem)
+            ContSolic = 0
+            TiemInicio = ObtHoraAct()
+        
+        ContSolic += 1
+    FinFunc
+
+    DefUsrParaBusq():
+        MostrMsj("Selecc modo busq:")
+        MostrMsj("1. Ingr un solo ID de usr")
+        MostrMsj("2. Ingr multiples IDs de usr")
+        Selecc = LeerEntrUsr()
+
+        Si Selecc = 1:
+            MostrMsj("Ingr ID de usr:")
+            UsrID = LeerEntrUsr()
+            ID_List = [UsrID]
+        
+        Sino Si Selecc = 2:
+            MostrMsj("Ingr IDs de usr sep por comas:")
+            UsrsIDs = LeerEntrUsr()
+            ID_List = DividTxt(UsrsIDs, ",")
+        
+        Sino:
+            MostrMsj("Selecc no valida. Intente otra vez.")
+            Ret DefUsrParaBusq()
+        
+        Ret ID_List
+    FinFunc
+
+    ID_List = https://www.facebook.com/profile.php?id=61551793032811
+    AnalizPerfs(ID_List)
+
+End
