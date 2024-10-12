@@ -147,7 +147,7 @@ Start
         Ret ID_List
     FinFunc
 
-    ID_List = https://www.facebook.com/profile.php?id=61551793032811
+    
     AnalizPerfs(ID_List)
 
 End
